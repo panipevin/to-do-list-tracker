@@ -1,4 +1,9 @@
-// Setup Default Task Templates Structure
+// --- 1. CONNECT TO YOUR BACKEND DATABASE ---
+const SUPABASE_URL = 'YOUR_SUPABASE_URL'; 
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const supabase = sb.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// --- 2. THE CHOSEN TEMPLATE ---
 const defaultStructure = [
     { id: 'wakeup', text: '1. Wake up time', type: 'time', val: '07:00' },
     { id: 'exercise', text: '2. Exercise', type: 'check', val: false },
@@ -9,18 +14,16 @@ const defaultStructure = [
     { id: 'sleeping', text: '7. Sleeping time', type: 'time', val: '22:00' }
 ];
 
-let activeTargetUser = ''; 
 let currentDateString = '';
+let localCacheData = null; // Holds the live state locally
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Lock default to current local date
     const today = new Date();
     currentDateString = today.toISOString().split('T')[0];
     
     const dateInput = document.getElementById('history-date');
     dateInput.value = currentDateString;
     
-    // Register calendar picker logic
     dateInput.addEventListener('change', (e) => {
         currentDateString = e.target.value;
         loadDayData();
@@ -30,24 +33,42 @@ document.addEventListener('DOMContentLoaded', () => {
     startMidnightTimer();
 });
 
-// Primary day parser
-function loadDayData() {
-    let dayRecords = localStorage.getItem(`day_record_${currentDateString}`);
-    
-    if (!dayRecords) {
-        // Build crisp initialization maps if date doesn't exist
-        dayRecords = {
+// --- 3. FETCH DATA FROM BACKEND CLOUD ---
+async function loadDayData() {
+    // Look up the specific chosen date row in your database table
+    let { data: record, error } = await supabase
+        .from('daily_records')
+        .select('*')
+        .eq('date_string', currentDateString)
+        .single();
+
+    if (error && error.code === 'PGRST116') {
+        // Record doesn't exist yet for this day, generate a fresh row structure
+        localCacheData = {
             user1: { saved: false, tasks: JSON.parse(JSON.stringify(defaultStructure)) },
             user2: { saved: false, tasks: JSON.parse(JSON.stringify(defaultStructure)) }
         };
-        localStorage.setItem(`day_record_${currentDateString}`, JSON.stringify(dayRecords));
+        // Push the new day to your database cloud row
+        await supabase.from('daily_records').insert([
+            { 
+                date_string: currentDateString,
+                user1_saved: false,
+                user1_tasks: localCacheData.user1.tasks,
+                user2_saved: false,
+                user2_tasks: localCacheData.user2.tasks
+            }
+        ]);
     } else {
-        dayRecords = JSON.parse(dayRecords);
+        // Row exists! Map backend records into browser screen layouts
+        localCacheData = {
+            user1: { saved: record.user1_saved, tasks: record.user1_tasks },
+            user2: { saved: record.user2_saved, tasks: record.user2_tasks }
+        };
     }
 
-    renderUserDOM('user1', dayRecords.user1);
-    renderUserDOM('user2', dayRecords.user2);
-    evaluateWinner(dayRecords);
+    renderUserDOM('user1', localCacheData.user1);
+    renderUserDOM('user2', localCacheData.user2);
+    evaluateWinner(localCacheData);
 }
 
 function renderUserDOM(userKey, userData) {
@@ -62,12 +83,11 @@ function renderUserDOM(userKey, userData) {
         const leftSide = document.createElement('div');
         leftSide.className = 'item-left';
 
-        // Check if item element needs checkbox or custom entry field
         if (task.type === 'check') {
             const chk = document.createElement('input');
             chk.type = 'checkbox';
             chk.checked = task.val;
-            chk.disabled = userData.saved; // lock when verified
+            chk.disabled = userData.saved; 
             chk.addEventListener('change', () => {
                 updateTaskValue(userKey, idx, chk.checked);
             });
@@ -79,7 +99,6 @@ function renderUserDOM(userKey, userData) {
         leftSide.appendChild(labelText);
         itemRow.appendChild(leftSide);
 
-        // Append explicit metric fields right aligned
         if (task.type !== 'check') {
             const inputField = document.createElement('input');
             inputField.className = 'input-val';
@@ -100,40 +119,41 @@ function renderUserDOM(userKey, userData) {
 
             itemRow.appendChild(inputField);
         }
-
         container.appendChild(itemRow);
     });
 
-    // Run custom rule calculations
     calculateMetrics(userKey, userData.tasks);
 }
 
-function updateTaskValue(userKey, taskIdx, newVal) {
-    const data = JSON.parse(localStorage.getItem(`day_record_${currentDateString}`));
-    data[userKey].tasks[taskIdx].val = newVal;
-    localStorage.setItem(`day_record_${currentDateString}`, JSON.stringify(data));
-    calculateMetrics(userKey, data[userKey].tasks);
+// --- 4. STREAM CHANGES LIVE TO BACKEND CLOUD ---
+async function updateTaskValue(userKey, taskIdx, newVal) {
+    localCacheData[userKey].tasks[taskIdx].val = newVal;
+    calculateMetrics(userKey, localCacheData[userKey].tasks);
+
+    // Patch change straight up to your Supabase tables
+    const updatePayload = {};
+    updatePayload[`${userKey}_tasks`] = localCacheData[userKey].tasks;
+
+    await supabase
+        .from('daily_records')
+        .update(updatePayload)
+        .eq('date_string', currentDateString);
 }
 
-// Math Engines for Sleep Metrics and Water Volumes
+// --- 5. SYSTEM MANIFOLD CALCULATIONS ---
 function calculateMetrics(userKey, tasks) {
     const waterTask = tasks.find(t => t.id === 'water');
     const wakeupTask = tasks.find(t => t.id === 'wakeup');
     const sleepTask = tasks.find(t => t.id === 'sleeping');
 
-    // Water highlight assessment
     const waterRow = document.getElementById(`${userKey}-row-water`);
     const waterStatus = document.getElementById(`${userKey}-water-status`);
     if(waterTask && waterRow) {
         waterStatus.textContent = `${waterTask.val} / 3 Liters`;
-        if (waterTask.val < 3) {
-            waterRow.classList.add('highlight-red');
-        } else {
-            waterRow.classList.remove('highlight-red');
-        }
+        if (waterTask.val < 3) waterRow.className = 'todo-item highlight-red';
+        else waterRow.className = 'todo-item';
     }
 
-    // Sleep evaluation logic engine
     if (wakeupTask && sleepTask) {
         const sleepHours = computeSleepDuration(sleepTask.val, wakeupTask.val);
         document.getElementById(`${userKey}-sleep-status`).textContent = `${sleepHours.toFixed(1)} hours`;
@@ -142,16 +162,15 @@ function calculateMetrics(userKey, tasks) {
         const wakeupRow = document.getElementById(`${userKey}-row-wakeup`);
 
         if(sleepRow && wakeupRow) {
-            // Reset tags
-            sleepRow.classList.remove('highlight-red', 'highlight-yellow');
-            wakeupRow.classList.remove('highlight-red', 'highlight-yellow');
-
             if (sleepHours < 7) {
-                sleepRow.classList.add('highlight-red');
-                wakeupRow.classList.add('highlight-red');
+                sleepRow.className = 'todo-item highlight-red';
+                wakeupRow.className = 'todo-item highlight-red';
             } else if (sleepHours > 7) {
-                sleepRow.classList.add('highlight-yellow');
-                wakeupRow.classList.add('highlight-yellow');
+                sleepRow.className = 'todo-item highlight-yellow';
+                wakeupRow.className = 'todo-item highlight-yellow';
+            } else {
+                sleepRow.className = 'todo-item';
+                wakeupRow.className = 'todo-item';
             }
         }
     }
@@ -161,18 +180,11 @@ function computeSleepDuration(sleepTime, wakeTime) {
     if (!sleepTime || !wakeTime) return 0;
     const [sH, sM] = sleepTime.split(':').map(Number);
     const [wH, wM] = wakeTime.split(':').map(Number);
-
     let sleepDate = new Date(2020, 0, 1, sH, sM);
-    let wakeDate = new Date(2020, 0, 2, wH, wM); // Assumed wake up next calendar day
-
-    let differenceMs = wakeDate - sleepDate;
-    let hours = differenceMs / (1000 * 60 * 60);
-    
-    if (hours > 24) hours -= 24; // Correction if early sleeper
-    return hours;
+    let wakeDate = new Date(2020, 0, 2, wH, wM);
+    return (wakeDate - sleepDate) / (1000 * 60 * 60);
 }
 
-// Dialog window controllers
 function openAddModal(userKey) {
     activeTargetUser = userKey;
     document.getElementById('custom-task-modal').style.display = 'flex';
@@ -184,65 +196,68 @@ function closeAddModal() {
     document.getElementById('custom-task-name').value = '';
 }
 
-function saveCustomTask() {
+async function saveCustomTask() {
     const textStr = document.getElementById('custom-task-name').value.trim();
     if (!textStr) return;
 
-    const data = JSON.parse(localStorage.getItem(`day_record_${currentDateString}`));
-    const newId = 'custom_' + Date.now();
-    
-    data[activeTargetUser].tasks.push({
-        id: newId,
+    localCacheData[activeTargetUser].tasks.push({
+        id: 'custom_' + Date.now(),
         text: textStr,
         type: 'check',
         val: false
     });
 
-    localStorage.setItem(`day_record_${currentDateString}`, JSON.stringify(data));
+    const updatePayload = {};
+    updatePayload[`${activeTargetUser}_tasks`] = localCacheData[activeTargetUser].tasks;
+
+    await supabase
+        .from('daily_records')
+        .update(updatePayload)
+        .eq('date_string', currentDateString);
+
     loadDayData();
     closeAddModal();
 }
 
-// Individual confirmation routine saves
-function manualSave(userKey) {
-    const data = JSON.parse(localStorage.getItem(`day_record_${currentDateString}`));
-    data[userKey].saved = true;
-    localStorage.setItem(`day_record_${currentDateString}`, JSON.stringify(data));
+// --- 6. DATA FINALIZE SUBMIT ---
+async function manualSave(userKey) {
+    const updatePayload = {};
+    updatePayload[`${userKey}_saved`] = true;
+
+    await supabase
+        .from('daily_records')
+        .update(updatePayload)
+        .eq('date_string', currentDateString);
     
-    alert(`Data successfully locked and submitted for validation!`);
+    alert(`Data saved to the cloud!`);
     loadDayData();
 }
 
-// Automated Cron backup execution at 12:00 Midnight
+// --- 7. AUTO MIDNIGHT LOCKOUT SYNC ---
 function startMidnightTimer() {
     const now = new Date();
     const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
-    const msUntilMidnight = midnight - now;
-
     setTimeout(() => {
         autoSaveAll();
-        // Recur dynamically
         setInterval(autoSaveAll, 24 * 60 * 60 * 1000);
-    }, msUntilMidnight);
+    }, midnight - now);
 }
 
-function autoSaveAll() {
-    const data = JSON.parse(localStorage.getItem(`day_record_${currentDateString}`));
-    if(data) {
-        data.user1.saved = true;
-        data.user2.saved = true;
-        localStorage.setItem(`day_record_${currentDateString}`, JSON.stringify(data));
-        loadDayData();
-    }
+async function autoSaveAll() {
+    await supabase
+        .from('daily_records')
+        .update({ user1_saved: true, user2_saved: true })
+        .eq('date_string', currentDateString);
+    loadDayData();
 }
 
-// Leaderboard engine computation block
+// --- 8. WINNER DETERMINATION ENGINE ---
 function evaluateWinner(dayData) {
     const banner = document.getElementById('daily-winner-banner');
     
     if (!dayData.user1.saved || !dayData.user2.saved) {
         banner.className = "winner-banner";
-        banner.textContent = "Waiting for both profiles to submit records...";
+        banner.textContent = "Waiting for both users to click Save to reveal the daily winner!";
         return;
     }
 
@@ -251,13 +266,13 @@ function evaluateWinner(dayData) {
 
     if (u1Score > u2Score) {
         banner.className = "winner-banner highlight-yellow";
-        banner.textContent = `👑 A PANI PEVIN Wins Today! (Score: ${u1Score} vs ${u2Score})`;
+        banner.textContent = `👑 A PANI PEVIN Wins! (Score: ${u1Score} vs ${u2Score})`;
     } else if (u2Score > u1Score) {
         banner.className = "winner-banner highlight-yellow";
-        banner.textContent = `👑 SHIT DHANUSHYA Wins Today! (Score: ${u2Score} vs ${u1Score})`;
+        banner.textContent = `👑 SHIT DHANUSHYA Wins! (Score: ${u2Score} vs ${u1Score})`;
     } else {
         banner.className = "winner-banner";
-        banner.textContent = `🤝 It's a Perfect Tie! (Score: ${u1Score} vs ${u2Score})`;
+        banner.textContent = `🤝 It's a Tie Game! (Score: ${u1Score} vs ${u2Score})`;
     }
 }
 
@@ -269,7 +284,7 @@ function calculateScore(tasks) {
         if (t.id === 'sleeping') {
             const wakeup = tasks.find(tk => tk.id === 'wakeup');
             const hrs = computeSleepDuration(t.val, wakeup.val);
-            if (hrs >= 7) score++; // Reward healthy lifestyle habits
+            if (hrs >= 7) score++; 
         }
     });
     return score;
