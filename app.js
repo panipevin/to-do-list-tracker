@@ -251,10 +251,10 @@ function evaluateWinner(dayData) {
 
     if (u1Score > u2Score) {
         banner.className = "winner-banner highlight-yellow";
-        banner.textContent = `👑 My Space Wins Today! (Score: ${u1Score} vs ${u2Score})`;
+        banner.textContent = `👑 A PANI PEVIN Wins Today! (Score: ${u1Score} vs ${u2Score})`;
     } else if (u2Score > u1Score) {
         banner.className = "winner-banner highlight-yellow";
-        banner.textContent = `👑 Her Space Wins Today! (Score: ${u2Score} vs ${u1Score})`;
+        banner.textContent = `👑 SHIT DHANUSHYA Wins Today! (Score: ${u2Score} vs ${u1Score})`;
     } else {
         banner.className = "winner-banner";
         banner.textContent = `🤝 It's a Perfect Tie! (Score: ${u1Score} vs ${u2Score})`;
