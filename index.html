@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sibling Tracker & Arena</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <header class="app-header">
+        <div class="header-overlay">
+            <h1>Don't waste today</h1>
+            <p class="subtitle">Daily Sibling Arena</p>
+        </div>
+    </header>
+
+    <!-- Top Utility Bar: Calendar Select & Daily Winner -->
+    <div class="utility-bar">
+        <div class="calendar-container">
+            <label for="history-date">📅 Select Date: </label>
+            <input type="date" id="history-date">
+        </div>
+        <div id="daily-winner-banner" class="winner-banner">
+            Both must save today's data to determine the winner!
+        </div>
+    </div>
+
+    <main class="dashboard-grid">
+        
+        <!-- LEFT COLUMN: Your Space -->
+        <section class="panel dev-space" id="user1-panel">
+            <div class="panel-header">
+                <h2>💻 A PANI PEVIN</h2>
+                <span class="tag">Focus Mode</span>
+            </div>
+            
+            <div class="widget">
+                <h3>Daily Metrics & Tasks</h3>
+                <div class="todo-list" id="user1-todo-list">
+                    <!-- JavaScript dynamically builds inputs here -->
+                </div>
+                
+                <button class="add-more-btn" onclick="openAddModal('user1')">+ Add Custom Task</button>
+            </div>
+
+            <!-- Stats/Calculations Readout Block -->
+            <div class="widget stats-widget">
+                <h3>Calculated Reports</h3>
+                <div class="stat-row">Water Intake: <span id="user1-water-status">0 / 3 Liters</span></div>
+                <div class="stat-row">Sleep Duration: <span id="user1-sleep-status">0 hrs</span></div>
+            </div>
+
+            <button class="action-save-btn" onclick="manualSave('user1')">Save My Data</button>
+        </section>
+
+        <!-- RIGHT COLUMN: Her Space -->
+        <section class="panel sister-space" id="user2-panel">
+            <div class="panel-header">
+                <h2>✨ SHIT DHANUSHYA</h2>
+                <span class="tag sister-tag">Creative Mode</span>
+            </div>
+            
+            <div class="widget">
+                <h3>Daily Metrics & Tasks</h3>
+                <div class="todo-list" id="user2-todo-list">
+                    <!-- JavaScript dynamically builds inputs here -->
+                </div>
+                
+                <button class="add-more-btn" onclick="openAddModal('user2')">+ Add Custom Task</button>
+            </div>
+
+            <!-- Stats/Calculations Readout Block -->
+            <div class="widget stats-widget">
+                <h3>Calculated Reports</h3>
+                <div class="stat-row">Water Intake: <span id="user2-water-status">0 / 3 Liters</span></div>
+                <div class="stat-row">Sleep Duration: <span id="user2-sleep-status">0 hrs</span></div>
+            </div>
+
+            <button class="action-save-btn" onclick="manualSave('user2')">Save Her Data</button>
+        </section>
+
+    </main>
+
+    <!-- Modal Popup for adding Custom items safely -->
+    <div id="custom-task-modal" class="modal">
+        <div class="modal-content">
+            <h3>Add Custom Item</h3>
+            <input type="text" id="custom-task-name" placeholder="Task Name (e.g., Coding, Reading)">
+            <div class="modal-actions">
+                <button onclick="closeAddModal()">Cancel</button>
+                <button id="modal-submit-btn">Add to List</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
